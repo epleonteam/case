@@ -1,11 +1,33 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FileText, X, Shield } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { LayoutDashboard, FileText, X, Shield, BarChart3 } from 'lucide-react';
 
 export default function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isReport = location.pathname === '/' && searchParams.get('tab') === '7day';
+  const isDashboardOverview = location.pathname === '/' && searchParams.get('tab') !== '7day';
+
   const navItems = [
-    { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'New Case', path: '/paste', icon: FileText },
+    { 
+      name: 'Dashboard', 
+      path: '/', 
+      icon: LayoutDashboard,
+      isActive: isDashboardOverview 
+    },
+    { 
+      name: '7-Day Report', 
+      path: '/?tab=7day', 
+      icon: BarChart3,
+      badge: '7D',
+      isActive: isReport 
+    },
+    { 
+      name: 'New Case', 
+      path: '/paste', 
+      icon: FileText,
+      isActive: location.pathname === '/paste'
+    },
   ];
 
   return (
@@ -28,17 +50,24 @@ export default function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose:
         <nav className="flex-1 space-y-2">
           {navItems.map((item) => (
             <NavLink
-              key={item.path}
+              key={item.name}
               to={item.path}
               onClick={onClose}
-              className={({ isActive }) => 
-                `flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors ${
-                  isActive ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-[#9CA3AF] hover:bg-white/[0.03] hover:text-[#F9FAFB]'
+              className={() => 
+                `flex items-center justify-between px-4 py-3 rounded-xl font-medium transition-colors ${
+                  item.isActive ? 'bg-blue-600/15 text-blue-400 border border-blue-500/30' : 'text-[#9CA3AF] hover:bg-white/[0.03] hover:text-[#F9FAFB]'
                 }`
               }
             >
-              <item.icon size={20} />
-              {item.name}
+              <div className="flex items-center gap-3">
+                <item.icon size={20} />
+                <span>{item.name}</span>
+              </div>
+              {item.badge && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  {item.badge}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

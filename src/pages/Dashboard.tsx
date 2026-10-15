@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { WithdrawalCase, Status } from '../types';
 import { 
@@ -16,15 +17,27 @@ import {
   Activity,
   LayoutDashboard,
   Phone,
-  MessageCircle
+  MessageCircle,
+  BarChart3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import StatsGrid from '../components/StatsGrid';
 import CaseModal from '../components/CaseModal';
 import Toast, { ToastType } from '../components/Toast';
+import SevenDayReport from '../components/SevenDayReport';
 import { searchCases, highlightText } from '../lib/search';
 
 export default function Dashboard() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === '7day' ? '7day' : 'overview';
+
+  const handleTabChange = (tab: 'overview' | '7day') => {
+    if (tab === '7day') {
+      setSearchParams({ tab: '7day' });
+    } else {
+      setSearchParams({});
+    }
+  };
   const [cases, setCases] = useState<WithdrawalCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -188,57 +201,120 @@ export default function Dashboard() {
           </div>
         </div>
         
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full lg:w-auto">
-          <div className="relative w-full lg:w-80 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-blue-500 transition-colors" size={16} />
-            <input 
-              type="text" 
-              placeholder="Search anything..."
-              className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-3 pl-11 pr-4 text-xs focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.05] transition-all duration-300"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-2 bg-white/[0.03] p-1 rounded-2xl border border-white/10">
-            <button 
-              onClick={() => setExactMatch(!exactMatch)}
-              className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 ${
-                exactMatch ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-zinc-500 hover:text-white'
-              }`}
-            >
-              Exact
-            </button>
-            
-            <select 
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as Status | 'All')}
-              className="flex-1 sm:flex-none bg-transparent py-2 px-3 text-[9px] font-black uppercase tracking-widest text-zinc-400 focus:outline-none cursor-pointer"
-            >
-              <option value="All">All Status</option>
-              <option value="Pending">Pending</option>
-              <option value="Approved">Approved</option>
-              <option value="Rejected">Rejected</option>
-              <option value="Contact">Contact</option>
-              <option value="Contact Fail">Contact Fail</option>
-              <option value="Hold">Hold</option>
-            </select>
-          </div>
+        {activeTab === 'overview' && (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full lg:w-auto">
+            <div className="relative w-full lg:w-80 group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-blue-500 transition-colors" size={16} />
+              <input 
+                type="text" 
+                placeholder="Search anything..."
+                className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-3 pl-11 pr-4 text-xs focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.05] transition-all duration-300"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2 bg-white/[0.03] p-1 rounded-2xl border border-white/10">
+              <button 
+                onClick={() => setExactMatch(!exactMatch)}
+                className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 ${
+                  exactMatch ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-zinc-500 hover:text-white'
+                }`}
+              >
+                Exact
+              </button>
+              
+              <select 
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as Status | 'All')}
+                className="flex-1 sm:flex-none bg-transparent py-2 px-3 text-[9px] font-black uppercase tracking-widest text-zinc-400 focus:outline-none cursor-pointer"
+              >
+                <option value="All">All Status</option>
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Contact">Contact</option>
+                <option value="Contact Fail">Contact Fail</option>
+                <option value="Hold">Hold</option>
+              </select>
+            </div>
 
-          <button 
-            onClick={exportToCSV}
-            className="flex p-3 bg-white/[0.03] border border-white/10 rounded-2xl text-zinc-500 hover:text-white hover:bg-white/[0.08] transition-all duration-300 group items-center justify-center"
-            title="Export to CSV"
+            <button 
+              onClick={exportToCSV}
+              className="flex p-3 bg-white/[0.03] border border-white/10 rounded-2xl text-zinc-500 hover:text-white hover:bg-white/[0.08] transition-all duration-300 group items-center justify-center"
+              title="Export to CSV"
+            >
+              <Download size={18} className="group-hover:scale-110 transition-transform duration-300" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Dashboard View Slider */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-2 bg-white/[0.02] border border-white/5 rounded-3xl backdrop-blur-md">
+        <div className="inline-flex p-1 bg-white/[0.04] border border-white/10 rounded-2xl relative">
+          <button
+            onClick={() => handleTabChange('overview')}
+            className={`relative px-4 sm:px-6 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-2 z-10 ${
+              activeTab === 'overview' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
           >
-            <Download size={18} className="group-hover:scale-110 transition-transform duration-300" />
+            {activeTab === 'overview' && (
+              <motion.div
+                layoutId="dashboard-slider-pill"
+                className="absolute inset-0 bg-blue-600 rounded-xl shadow-lg shadow-blue-600/30"
+                transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <LayoutDashboard size={15} /> Overview & Cases
+            </span>
           </button>
+
+          <button
+            onClick={() => handleTabChange('7day')}
+            className={`relative px-4 sm:px-6 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-2 z-10 ${
+              activeTab === '7day' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            {activeTab === '7day' && (
+              <motion.div
+                layoutId="dashboard-slider-pill"
+                className="absolute inset-0 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/30"
+                transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-2">
+              <BarChart3 size={15} /> 7-Day Report
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-white/20 text-white">
+                7D
+              </span>
+            </span>
+          </button>
+        </div>
+
+        <div className="text-xs text-zinc-500 hidden sm:flex items-center gap-2 px-3">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>
+            {activeTab === '7day' ? '7 Calendar Days in Asia/Dhaka' : `Live Database Sync • ${cases.length} total records`}
+          </span>
         </div>
       </div>
 
-      {/* Stats */}
-      <StatsGrid {...stats} onFilterHold={() => setStatusFilter('Hold')} />
+      {activeTab === '7day' ? (
+        <SevenDayReport
+          cases={cases}
+          loading={loading}
+          onBackToOverview={() => handleTabChange('overview')}
+          onSelectCase={(c) => setSelectedCase(c)}
+          onRefresh={fetchData}
+        />
+      ) : (
+        <>
+          {/* Stats */}
+          <StatsGrid {...stats} onFilterHold={() => setStatusFilter('Hold')} />
 
-      {/* Table */}
-      <div className="glass rounded-3xl overflow-hidden animate-slide-up border-white/[0.03]">
+          {/* Table */}
+          <div className="glass rounded-3xl overflow-hidden animate-slide-up border-white/[0.03]">
         <div className="p-6 md:p-8 border-b border-white/5 flex items-center justify-between bg-white/[0.01]">
           <div className="flex items-center gap-4">
             <h2 className="text-lg md:text-xl font-bold tracking-tight">Active Cases</h2>
@@ -518,6 +594,8 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      </>
+      )}
 
       <AnimatePresence>
         {selectedCase && (
