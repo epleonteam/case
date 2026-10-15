@@ -1,12 +1,12 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileText, X, Shield, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, FileText, X, Shield, BarChart3, Phone } from 'lucide-react';
 
 export default function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const isReport = location.pathname === '/' && searchParams.get('tab') === '7day';
-  const isDashboardOverview = location.pathname === '/' && searchParams.get('tab') !== '7day';
+  const isReport = location.pathname === '/' && (searchParams.get('tab') === 'report' || searchParams.get('tab') === '7day');
+  const isDashboardOverview = location.pathname === '/' && !isReport;
 
   const navItems = [
     { 
@@ -16,10 +16,10 @@ export default function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose:
       isActive: isDashboardOverview 
     },
     { 
-      name: '7-Day Report', 
-      path: '/?tab=7day', 
-      icon: BarChart3,
-      badge: '7D',
+      name: 'Report', 
+      path: '/?tab=report', 
+      icon: FileText,
+      badge: 'Filter',
       isActive: isReport 
     },
     { 
@@ -27,6 +27,13 @@ export default function Sidebar({ isOpen, onClose }: { isOpen: boolean, onClose:
       path: '/paste', 
       icon: FileText,
       isActive: location.pathname === '/paste'
+    },
+    { 
+      name: 'Fix Phone Formats', 
+      path: '/?action=fix-phones', 
+      icon: Phone,
+      badge: 'Auto Fix',
+      isActive: location.pathname === '/' && searchParams.get('action') === 'fix-phones'
     },
   ];
 

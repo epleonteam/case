@@ -86,19 +86,14 @@ export function parseRawWithdrawalText(text: string): Partial<WithdrawalCase> {
   return result;
 }
 
-export function normalizePhoneNumber(input: string): string {
-    if (!input) return '';
-    // Remove all non-digit characters
-    let cleaned = input.replace(/\D/g, '');
+import { normalizeBangladeshPhone } from './phoneNormalization';
 
-    // If it starts with 880 (international code), remove it and add 0
-    if (cleaned.startsWith('880')) {
-        cleaned = '0' + cleaned.substring(3);
-    }
-    // If it's a 10-digit number starting with 1, prepend 0
-    else if (cleaned.length === 10 && cleaned.startsWith('1')) {
-        cleaned = '0' + cleaned;
-    }
-    
-    return cleaned;
+export function normalizePhoneNumber(input: string): string {
+  if (!input) return '';
+  const res = normalizeBangladeshPhone(input);
+  if (res.isValid && res.normalized) {
+    return res.normalized;
+  }
+  // Fallback cleanup if not matching 01[3-9]
+  return input.replace(/\D/g, '');
 }

@@ -18,22 +18,25 @@ import {
   LayoutDashboard,
   Phone,
   MessageCircle,
-  BarChart3
+  BarChart3,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import StatsGrid from '../components/StatsGrid';
 import CaseModal from '../components/CaseModal';
 import Toast, { ToastType } from '../components/Toast';
 import SevenDayReport from '../components/SevenDayReport';
+import PhoneNormalizationModal from '../components/PhoneNormalizationModal';
 import { searchCases, highlightText } from '../lib/search';
 
 export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') === '7day' ? '7day' : 'overview';
+  const isReportTab = searchParams.get('tab') === 'report' || searchParams.get('tab') === '7day';
+  const activeTab = isReportTab ? 'report' : 'overview';
 
-  const handleTabChange = (tab: 'overview' | '7day') => {
-    if (tab === '7day') {
-      setSearchParams({ tab: '7day' });
+  const handleTabChange = (tab: 'overview' | 'report') => {
+    if (tab === 'report') {
+      setSearchParams({ tab: 'report' });
     } else {
       setSearchParams({});
     }
@@ -46,6 +49,31 @@ export default function Dashboard() {
   const [selectedCase, setSelectedCase] = useState<WithdrawalCase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null);
+  const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
+
+  // Sync action=fix-phones search param with modal open
+  useEffect(() => {
+    if (searchParams.get('action') === 'fix-phones') {
+      setIsPhoneModalOpen(true);
+    }
+  }, [searchParams]);
+
+  const handleClosePhoneModal = () => {
+    setIsPhoneModalOpen(false);
+    if (searchParams.get('action') === 'fix-phones') {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('action');
+      setSearchParams(nextParams);
+    }
+  };
+
+  const normalizablePhoneCount = useMemo(() => {
+    return cases.filter(c => {
+      const raw = c.phone_number;
+      if (!raw || typeof raw !== 'string') return false;
+      return !/^01[3-9]\d{8}$/.test(raw.trim());
+    }).length;
+  }, [cases]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -245,6 +273,20 @@ export default function Dashboard() {
             >
               <Download size={18} className="group-hover:scale-110 transition-transform duration-300" />
             </button>
+
+            <button 
+              onClick={() => setIsPhoneModalOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 hover:from-blue-600/30 hover:to-indigo-600/30 border border-blue-500/30 rounded-2xl text-blue-300 hover:text-white transition-all duration-300 text-xs font-bold shadow-lg shadow-blue-500/10 group cursor-pointer"
+              title="Fix Existing Phone Number Formats (Admin)"
+            >
+              <Phone size={15} className="group-hover:rotate-12 transition-transform duration-300 text-blue-400" />
+              <span className="hidden sm:inline">Fix Phone Formats</span>
+              {normalizablePhoneCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-blue-500 text-white animate-pulse">
+                  {normalizablePhoneCount}
+                </span>
+              )}
+            </button>
           </div>
         )}
       </div>
@@ -271,12 +313,12 @@ export default function Dashboard() {
           </button>
 
           <button
-            onClick={() => handleTabChange('7day')}
+            onClick={() => handleTabChange('report')}
             className={`relative px-4 sm:px-6 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center gap-2 z-10 ${
-              activeTab === '7day' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+              activeTab === 'report' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            {activeTab === '7day' && (
+            {activeTab === 'report' && (
               <motion.div
                 layoutId="dashboard-slider-pill"
                 className="absolute inset-0 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/30"
@@ -284,9 +326,9 @@ export default function Dashboard() {
               />
             )}
             <span className="relative z-10 flex items-center gap-2">
-              <BarChart3 size={15} /> 7-Day Report
+              <FileText size={15} /> Report
               <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-white/20 text-white">
-                7D
+                Filter
               </span>
             </span>
           </button>
@@ -295,12 +337,12 @@ export default function Dashboard() {
         <div className="text-xs text-zinc-500 hidden sm:flex items-center gap-2 px-3">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span>
-            {activeTab === '7day' ? '7 Calendar Days in Asia/Dhaka' : `Live Database Sync • ${cases.length} total records`}
+            {activeTab === 'report' ? 'Customizable Date Report in Asia/Dhaka' : `Live Database Sync • ${cases.length} total records`}
           </span>
         </div>
       </div>
 
-      {activeTab === '7day' ? (
+      {activeTab === 'report' ? (
         <SevenDayReport
           cases={cases}
           loading={loading}
@@ -616,6 +658,15 @@ export default function Dashboard() {
             onClose={() => setToast(null)} 
           />
         )}
+        <PhoneNormalizationModal
+          isOpen={isPhoneModalOpen}
+          onClose={handleClosePhoneModal}
+          cases={cases}
+          onSuccess={() => {
+            fetchData();
+            setToast({ message: 'Phone normalization updated successfully', type: 'success' });
+          }}
+        />
       </AnimatePresence>
     </motion.div>
   );

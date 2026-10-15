@@ -23,6 +23,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { PLATFORMS, PAYMENT_METHODS } from '../constants';
+import { recordCaseStatusChange } from '../lib/statusHistory';
+import CaseStatusHistoryView from './CaseStatusHistoryView';
+import { getBangladeshOperator } from '../lib/phoneNormalization';
+import { normalizePhoneNumber } from '../lib/parser';
 
 interface CaseModalProps {
   caseData: WithdrawalCase;
@@ -40,6 +44,9 @@ export default function CaseModal({ caseData, onClose, onUpdate }: CaseModalProp
   const [callbackDate, setCallbackDate] = useState('');
   const [callbackTime, setCallbackTime] = useState('');
   const [callbackNote, setCallbackNote] = useState('');
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [statusToConfirm, setStatusToConfirm] = useState<Status | null>(null);
+  const [statusChangeNote, setStatusChangeNote] = useState('');
   
   // Edit state
   const [isEditing, setIsEditing] = useState(false);
@@ -56,33 +63,44 @@ export default function CaseModal({ caseData, onClose, onUpdate }: CaseModalProp
   const [isCustomPlatform, setIsCustomPlatform] = useState(!PLATFORMS.includes(caseData.platform));
   const [isCustomPayment, setIsCustomPayment] = useState(!PAYMENT_METHODS.some(m => m.toLowerCase() === caseData.payment_method?.toLowerCase()));
 
-  const handleUpdateStatus = async (newStatus: Status) => {
+  const handleUpdateStatus = async (
+    newStatus: Status, 
+    optionalNote?: string, 
+    extraUpdates?: Record<string, any>
+  ) => {
+    // If status is unchanged, skip immediately to avoid duplicate history entry
+    if (newStatus === status) {
+      return;
+    }
+
     setLoading(true);
-    const newLog = {
-      id: crypto.randomUUID(),
-      message: `Status changed to ${newStatus}`,
-      timestamp: new Date().toLocaleString('en-US', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Dhaka'
-      }).replace(',', '')
-    };
 
-    const { error } = await supabase
-      .from('withdrawals')
-      .update({ 
-        status: newStatus,
-        status_logs: [newLog, ...caseData.status_logs]
-      })
-      .eq('id', caseData.id);
+    let changedByEmail = 'Admin';
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.email) {
+        changedByEmail = session.user.email;
+      }
+    } catch {
+      // Fallback
+    }
 
-    if (!error) {
+    const result = await recordCaseStatusChange({
+      withdrawalId: caseData.id,
+      caseId: caseData.case_id,
+      previousStatus: status,
+      newStatus,
+      changedBy: changedByEmail,
+      note: optionalNote,
+      existingLogs: caseData.status_logs,
+      additionalCaseUpdates: extraUpdates
+    });
+
+    if (!result.success) {
+      alert(`Status update failed: ${result.error}`);
+    } else {
       setStatus(newStatus);
+      setHistoryRefreshKey(prev => prev + 1);
       onUpdate();
     }
     setLoading(false);
@@ -283,14 +301,7 @@ export default function CaseModal({ caseData, onClose, onUpdate }: CaseModalProp
                     label="Phone Number" 
                     value={editData.phone_number} 
                     onChange={(val) => {
-                      let cleaned = val.replace(/\D/g, '');
-                      if (cleaned.startsWith('880')) {
-                        cleaned = cleaned.slice(3);
-                      }
-                      if (cleaned.length === 10 && cleaned.startsWith('1')) {
-                        cleaned = '0' + cleaned;
-                      }
-                      setEditData({...editData, phone_number: cleaned});
+                      setEditData({...editData, phone_number: normalizePhoneNumber(val)});
                     }}
                     icon={<Phone size={14} />} 
                   />
@@ -378,27 +389,38 @@ export default function CaseModal({ caseData, onClose, onUpdate }: CaseModalProp
                   <DetailItem label="Platform" value={caseData.platform} icon={<Zap size={14} />} className="uppercase" />
                   <DetailItem 
                     label="Phone Number" 
-                    value={caseData.phone_number} 
+                    value={
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono">{caseData.phone_number || 'N/A'}</span>
+                        {caseData.phone_number && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            {getBangladeshOperator(caseData.phone_number)}
+                          </span>
+                        )}
+                      </div>
+                    } 
                     icon={<Phone size={14} />} 
                     action={
-                      <div className="flex items-center gap-2">
-                        <a 
-                          href={`https://wa.me/88${caseData.phone_number}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1.5 bg-emerald-600/20 text-emerald-500 rounded-lg hover:bg-emerald-600 hover:text-white transition-all"
-                          title="WhatsApp User"
-                        >
-                          <MessageCircle size={14} />
-                        </a>
-                        <a 
-                          href={`tel:${caseData.phone_number}`}
-                          className="p-1.5 bg-blue-600/20 text-blue-500 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
-                          title="Call User"
-                        >
-                          <Phone size={14} />
-                        </a>
-                      </div>
+                      caseData.phone_number ? (
+                        <div className="flex items-center gap-2">
+                          <a 
+                            href={`https://wa.me/88${caseData.phone_number.replace(/\D/g, '').replace(/^880/, '0')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 bg-emerald-600/20 text-emerald-500 rounded-lg hover:bg-emerald-600 hover:text-white transition-all"
+                            title="WhatsApp User"
+                          >
+                            <MessageCircle size={14} />
+                          </a>
+                          <a 
+                            href={`tel:${caseData.phone_number}`}
+                            className="p-1.5 bg-blue-600/20 text-blue-500 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
+                            title="Call User"
+                          >
+                            <Phone size={14} />
+                          </a>
+                        </div>
+                      ) : undefined
                     }
                   />
                   <DetailItem label="Payment Method" value={caseData.payment_method} icon={<CreditCard size={14} />} className="capitalize" />
@@ -422,10 +444,12 @@ export default function CaseModal({ caseData, onClose, onUpdate }: CaseModalProp
                     key={s}
                     disabled={loading}
                     onClick={() => {
+                      if (s === status) return;
                       if (s === 'Hold') {
                         setCallbackModalOpen(true);
                       } else {
-                        handleUpdateStatus(s);
+                        setStatusToConfirm(s);
+                        setStatusChangeNote('');
                       }
                     }}
                     className={`flex-1 min-w-[30%] py-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${
@@ -487,69 +511,117 @@ export default function CaseModal({ caseData, onClose, onUpdate }: CaseModalProp
             </div>
           </div>
 
-          {/* Timeline */}
-          <div className="space-y-6">
-            <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-2">
-              <Clock size={14} /> Status Timeline
-            </h4>
-            <div className="relative space-y-8 timeline-line pl-4">
-              {caseData.status_logs?.map((log, i) => (
-                <motion.div 
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, delay: i * 0.1 }}
-                  key={log.id ? `log-${log.id}-${i}` : `log-idx-${i}`} 
-                  className="relative pl-6"
-                >
-                  <div className="absolute left-[-13px] top-1.5 w-3 h-3 rounded-full bg-[#050505] border-2 border-blue-500 z-10"></div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-zinc-200">{log.message}</p>
-                    <p className="text-xs text-zinc-500 data-value">
-                      {(() => {
-                        try {
-                          const date = new Date(log.timestamp.replace(' ', 'T'));
-                          if (isNaN(date.getTime())) return log.timestamp;
-                          return date.toLocaleString('en-US', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: true,
-                            timeZone: 'Asia/Dhaka'
-                          }).replace(',', '');
-                        } catch {
-                          return log.timestamp;
-                        }
-                      })()}
-                    </p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+          {/* Status Change History Column */}
+          <div className="space-y-4">
+            <CaseStatusHistoryView 
+              withdrawalId={caseData.id}
+              caseId={caseData.case_id}
+              fallbackLogs={caseData.status_logs}
+              refreshKey={historyRefreshKey}
+            />
           </div>
         </div>
+
+        {/* Status Change Confirmation Modal with Optional Note */}
+        {statusToConfirm && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+            <div className="bg-[#111827] border border-white/10 rounded-2xl md:rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Clock size={16} className="text-blue-500" />
+                  Confirm Status Change
+                </h3>
+                <button 
+                  onClick={() => setStatusToConfirm(null)}
+                  className="text-zinc-500 hover:text-white p-1 rounded-lg transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-center gap-3 py-3 bg-white/[0.02] rounded-xl border border-white/5">
+                <span className="px-3 py-1 rounded-lg border text-xs font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300 border-zinc-700">
+                  {status}
+                </span>
+                <span className="text-zinc-500 text-sm">→</span>
+                <span className="px-3 py-1 rounded-lg border text-xs font-bold uppercase tracking-wider bg-blue-600/20 text-blue-400 border-blue-500/40">
+                  {statusToConfirm}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                  Change Note (Optional)
+                </label>
+                <textarea
+                  value={statusChangeNote}
+                  onChange={(e) => setStatusChangeNote(e.target.value)}
+                  placeholder="Explain why this status is being changed (e.g. verified on platform, user requested delay, payment failed)..."
+                  className="w-full bg-zinc-900 border border-white/10 rounded-xl p-3 text-xs text-white placeholder-zinc-500 min-h-[85px] focus:outline-none focus:border-blue-500 transition-all resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => setStatusToConfirm(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-xs font-bold text-zinc-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={async () => {
+                    const target = statusToConfirm;
+                    const note = statusChangeNote.trim() || undefined;
+                    setStatusToConfirm(null);
+                    await handleUpdateStatus(target, note);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-colors flex items-center justify-center gap-1.5 shadow-lg shadow-blue-600/20"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={14} /> : 'Apply Status'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Callback Modal for Hold */}
         {callbackModalOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-[#181818] border border-white/10 rounded-3xl p-6 w-full max-w-sm space-y-4">
-              <h3 className="text-sm font-bold text-white">Schedule Callback</h3>
-              <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white" />
-              <input type="time" value={callbackTime} onChange={e => setCallbackTime(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white" />
-              <textarea value={callbackNote} onChange={e => setCallbackNote(e.target.value)} placeholder="Note..." className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white" />
-              <div className="flex gap-2">
+              <h3 className="text-sm font-bold text-white">Schedule Callback & Put on Hold</h3>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Callback Date</label>
+                <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white [color-scheme:dark]" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Callback Time</label>
+                <input type="time" value={callbackTime} onChange={e => setCallbackTime(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white [color-scheme:dark]" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Hold / Callback Note</label>
+                <textarea value={callbackNote} onChange={e => setCallbackNote(e.target.value)} placeholder="Reason for hold..." className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm text-white min-h-[70px] resize-none" />
+              </div>
+              <div className="flex gap-2 pt-2">
                 <button onClick={() => setCallbackModalOpen(false)} className="flex-1 py-3 bg-zinc-800 rounded-xl text-xs font-bold uppercase text-white">Cancel</button>
                 <button onClick={async () => {
-                  if (!callbackDate || !callbackTime) return;
-                  setLoading(true);
+                  if (!callbackDate || !callbackTime) {
+                    alert('Please select both a callback date and time.');
+                    return;
+                  }
                   const callback_at = `${callbackDate}T${callbackTime}:00Z`;
-                  const updateData = { status: 'Hold', hold_at: new Date().toISOString(), callback_at, callback_note: callbackNote };
-                  const newLog = { id: crypto.randomUUID(), message: 'Status changed to Hold', timestamp: new Date().toLocaleString() };
-                  await supabase.from('withdrawals').update({ ...updateData, status_logs: [newLog, ...caseData.status_logs] }).eq('id', caseData.id);
-                  setStatus('Hold');
-                  onUpdate();
-                  setLoading(false);
+                  const hold_at = new Date().toISOString();
+                  const note = callbackNote.trim() || undefined;
                   setCallbackModalOpen(false);
-                }} className="flex-1 py-3 bg-blue-600 rounded-xl text-xs font-bold uppercase text-white">Confirm</button>
+                  await handleUpdateStatus('Hold', note, {
+                    hold_at,
+                    callback_at,
+                    callback_note: callbackNote
+                  });
+                }} className="flex-1 py-3 bg-blue-600 rounded-xl text-xs font-bold uppercase text-white">Confirm Hold</button>
               </div>
             </div>
           </div>
