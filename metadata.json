@@ -1,0 +1,6 @@
+{
+  "name": "CaseFlow AI",
+  "description": "Premium AI-driven Case Management Platform with real-time analytics and intelligent AI automation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
