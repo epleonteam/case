@@ -15,7 +15,7 @@ interface StatsProps {
 
 export default function StatsGrid({ total, pending, approved, rejected, contact, contactFail, hold, onFilterHold }: StatsProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
       <StatCard label="Total Cases" value={total} icon={<LayoutDashboard size={20} />} color="blue" />
       <StatCard label="Pending Value" value={pending} icon={<Clock size={20} />} color="amber" />
       <StatCard label="Resolved Value" value={approved} icon={<CheckCircle2 size={20} />} color="emerald" />

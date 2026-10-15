@@ -14,7 +14,7 @@ import AIAgent from './components/AIAgent';
 import { Menu, X, Shield, ChevronLeft } from 'lucide-react';
 
 export default function App() {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -71,14 +71,6 @@ export default function App() {
             <h1 className="text-lg font-black tracking-tighter premium-gradient-text">CASEFLOW AI</h1>
           </div>
         </div>
-
-        {/* Sidebar Overlay */}
-        {isSidebarOpen && (
-          <div 
-            className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-fade-in"
-            onClick={() => setIsSidebarOpen(false)}
-          />
-        )}
 
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         
